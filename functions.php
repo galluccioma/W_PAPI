@@ -38,7 +38,7 @@ function enqueue_custom_admin_stylesheet() {
 }
 add_action('admin_enqueue_scripts', 'enqueue_custom_admin_stylesheet');
 
-//////////// REGISTRAZIONE DEL CUSTOM POST TYPE "FORM SUBMISSION"
+//////////// REGISTRAZIONE DEL CUSTOM POST TYPE "FORM SUBMISSION", NON VISUALIZZABILE NELL`API
 
 function custom_register_form_submission_post_type() {
     $labels = array(
@@ -68,13 +68,23 @@ function custom_register_form_submission_post_type() {
         'hierarchical'        => false,
         'menu_position'       => null,
         'supports'            => array('title'),
-        'show_in_rest'        => true,
-        'rest_base'           => 'form-submissions',
+        'show_in_rest'        => false,  // Disabilita la visualizzazione nell'API REST
     );
 
     register_post_type('form_submission', $args);
 }
 add_action('init', 'custom_register_form_submission_post_type');
+
+//////////// RIMUOVI I CAMPI PERSONALIZZATI DALL'API REST
+
+function remove_custom_fields_from_rest_api($response, $post, $request) {
+    if ($post->post_type === 'form_submission') {
+        // Rimuovi i meta fields dal risultato dell'API REST
+        $response->data['meta'] = array();
+    }
+    return $response;
+}
+add_filter('rest_prepare_form_submission', 'remove_custom_fields_from_rest_api', 10, 3);
 
 //////////// AGGIUNTA DEI METABOX PERSONALIZZATI
 
@@ -187,10 +197,50 @@ function custom_custom_form_submission_column($column, $post_id) {
 }
 add_action('manage_form_submission_posts_custom_column', 'custom_custom_form_submission_column', 10, 2);
 
+// INVIO MAIL AGLI ADMIN OGNI VOLTA CHE VIENE CREATO IL CUSTOM POST TYPE
+add_action( 'transition_post_status', 'send_form_submission_email_to_admins', 10, 3 );
+
+function send_form_submission_email_to_admins( $new_status, $old_status, $post ) {
+    // Verifica se il post è del tipo 'form_submission' e il nuovo stato è 'publish'
+    if ( $post->post_type === 'form_submission' && $new_status === 'publish' && $old_status !== 'publish' ) {
+        // Recupera i meta field del post
+        $firstname = get_post_meta( $post->ID, '_firstname', true );
+        $lastname  = get_post_meta( $post->ID, '_lastname', true );
+        $email     = get_post_meta( $post->ID, '_email', true );
+        $url       = get_post_meta( $post->ID, '_url', true );
+        $message   = get_post_meta( $post->ID, '_message', true );
+
+        // Ottieni tutti gli amministratori del sito
+        $admins = get_users( array( 'role__in' => array( 'administrator' ) ) );
+
+        // Prepara l'array di destinatari
+        $to = array();
+        foreach ( $admins as $admin ) {
+            $to[] = $admin->user_email;
+        }
+
+        // Prepara il soggetto e il corpo dell'email
+        $subject = 'Nuova compilazione Form dal sito';
+        $body    = '<p>E\' stata inviata una nuova Form Submission:</p>';
+        $body   .= '<p><strong>Nome:</strong> ' . esc_html( $firstname ) . '</p>';
+        $body   .= '<p><strong>Cognome:</strong> ' . esc_html( $lastname ) . '</p>';
+        $body   .= '<p><strong>Email:</strong> ' . esc_html( $email ) . '</p>';
+        $body   .= '<p><strong>URL del sito:</strong> ' . esc_url( $url ) . '</p>';
+        $body   .= '<p><strong>Messaggio:</strong><br>' . esc_html( $message ) . '</p>';
+        $body   .= '<p>Puoi visualizzare il Form Submission qui: ' . get_permalink( $post->ID ) . '</p>';
+
+        // Imposta gli headers per l'email
+        $headers = array( 'Content-Type: text/html; charset=UTF-8' );
+
+        // Invia l'email agli amministratori
+        wp_mail( $to, $subject, $body, $headers );
+    }
+}
+
 
 //////////////////// FUNZIONI API
 
-////////// Mostra l`url delle immagini nell`API
+////////// Mostra lurl delle immagini nellAPI
 function ws_register_images_field() {
     // Ottieni tutti i tipi di post personalizzati registrati
     $post_types = get_post_types(array('public' => true), 'names');
