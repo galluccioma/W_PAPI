@@ -1,6 +1,17 @@
 <?php
 
 //////////////////// Funzioni del tema Minimal Headless Theme
+//Reindirizza gli utenti non registrati al login
+
+function restrict_site_to_admins() {
+    // Verifica se l'utente non è loggato o non è un amministratore
+    if ( ! is_user_logged_in() || ! current_user_can('administrator') ) {
+        // Reindirizza alla pagina di login
+        auth_redirect();
+    }
+}
+add_action('template_redirect', 'restrict_site_to_admins');
+
 
 // Forza il no index del backend
 function force_no_index() {
@@ -197,7 +208,7 @@ function custom_custom_form_submission_column($column, $post_id) {
 }
 add_action('manage_form_submission_posts_custom_column', 'custom_custom_form_submission_column', 10, 2);
 
-// INVIO MAIL AGLI ADMIN OGNI VOLTA CHE VIENE CREATO IL CUSTOM POST TYPE
+///// INVIO MAIL AGLI ADMIN OGNI VOLTA CHE VIENE CREATO IL CUSTOM POST TYPE
 add_action( 'transition_post_status', 'send_form_submission_email_to_admins', 10, 3 );
 
 function send_form_submission_email_to_admins( $new_status, $old_status, $post ) {
@@ -221,12 +232,7 @@ function send_form_submission_email_to_admins( $new_status, $old_status, $post )
 
         // Prepara il soggetto e il corpo dell'email
         $subject = 'Nuova compilazione Form dal sito';
-        $body    = '<p>E\' stata inviata una nuova Form Submission:</p>';
-        $body   .= '<p><strong>Nome:</strong> ' . esc_html( $firstname ) . '</p>';
-        $body   .= '<p><strong>Cognome:</strong> ' . esc_html( $lastname ) . '</p>';
-        $body   .= '<p><strong>Email:</strong> ' . esc_html( $email ) . '</p>';
-        $body   .= '<p><strong>URL del sito:</strong> ' . esc_url( $url ) . '</p>';
-        $body   .= '<p><strong>Messaggio:</strong><br>' . esc_html( $message ) . '</p>';
+        
         $body   .= '<p>Puoi visualizzare il Form Submission qui: ' . get_permalink( $post->ID ) . '</p>';
 
         // Imposta gli headers per l'email
