@@ -1,8 +1,7 @@
 <?php
-
 //////////////////// Funzioni del tema Minimal Headless Theme
-//Reindirizza gli utenti non registrati al login
 
+// Reindirizza gli utenti non registrati al login
 function restrict_site_to_admins() {
     // Verifica se l'utente non è loggato o non è un amministratore
     if ( ! is_user_logged_in() || ! current_user_can('administrator') ) {
@@ -11,7 +10,6 @@ function restrict_site_to_admins() {
     }
 }
 add_action('template_redirect', 'restrict_site_to_admins');
-
 
 // Forza il no index del backend
 function force_no_index() {
@@ -22,7 +20,7 @@ add_action('wp_head', 'force_no_index', 1);
 // Abilita il supporto per le immagini in evidenza
 add_theme_support('post-thumbnails');
 
-////////// Disabilita tutte le classi dei blocchi Gutenberg
+// Disabilita tutte le classi dei blocchi Gutenberg
 function remove_gutenberg_block_classes($content) {
     // Rimuove tutte le classi dagli elementi HTML
     $content = preg_replace('/\s+class="[^"]*"/', '', $content);
@@ -31,11 +29,9 @@ function remove_gutenberg_block_classes($content) {
     // Restituisce il contenuto senza le classi
     return $content;
 }
-
-// Applica la funzione al contenuto dei post
 add_filter('the_content', 'remove_gutenberg_block_classes', 20);
 
-////////// CSS Backend
+// CSS Backend
 function enqueue_custom_stylesheet() {
     // Registriamo e enqueuiamo il file CSS per il frontend
     wp_enqueue_style('custom-style', get_template_directory_uri() . '/style.css');
@@ -49,8 +45,8 @@ function enqueue_custom_admin_stylesheet() {
 }
 add_action('admin_enqueue_scripts', 'enqueue_custom_admin_stylesheet');
 
-//////////// REGISTRAZIONE DEL CUSTOM POST TYPE "FORM SUBMISSION", NON VISUALIZZABILE NELL`API
 
+// REGISTRAZIONE DEL CUSTOM POST TYPE "FORM SUBMISSION", NON VISUALIZZABILE NELL'API
 function custom_register_form_submission_post_type() {
     $labels = array(
         'name'               => 'Form Submissions',
@@ -86,19 +82,8 @@ function custom_register_form_submission_post_type() {
 }
 add_action('init', 'custom_register_form_submission_post_type');
 
-//////////// RIMUOVI I CAMPI PERSONALIZZATI DALL'API REST
 
-function remove_custom_fields_from_rest_api($response, $post, $request) {
-    if ($post->post_type === 'form_submission') {
-        // Rimuovi i meta fields dal risultato dell'API REST
-        $response->data['meta'] = array();
-    }
-    return $response;
-}
-add_filter('rest_prepare_form_submission', 'remove_custom_fields_from_rest_api', 10, 3);
-
-//////////// AGGIUNTA DEI METABOX PERSONALIZZATI
-
+// AGGIUNTA DEI METABOX PERSONALIZZATI
 function custom_add_meta_boxes() {
     add_meta_box(
         'form_submission_meta_box',
@@ -175,8 +160,7 @@ function custom_save_form_submission_meta_box_data($post_id) {
 }
 add_action('save_post', 'custom_save_form_submission_meta_box_data');
 
-//////////// VISUALIZZAZIONE DEI CAMPI PERSONALIZZATI NELLA LISTA DEGLI ARTICOLI
-
+// VISUALIZZAZIONE DEI CAMPI PERSONALIZZATI NELLA LISTA DEGLI ARTICOLI
 function custom_set_custom_edit_form_submission_columns($columns) {
     $columns['firstname'] = 'Nome';
     $columns['lastname'] = 'Cognome';
@@ -208,173 +192,104 @@ function custom_custom_form_submission_column($column, $post_id) {
 }
 add_action('manage_form_submission_posts_custom_column', 'custom_custom_form_submission_column', 10, 2);
 
-///// INVIO MAIL AGLI ADMIN OGNI VOLTA CHE VIENE CREATO IL CUSTOM POST TYPE
-add_action( 'transition_post_status', 'send_form_submission_email_to_admins', 10, 3 );
+// // Disabilita gli endpoint API REST predefiniti
+function disable_default_rest_endpoints($endpoints) {
+    // Elenco degli endpoint da disabilitare
+    $endpoints_to_disable = array(
+        '/wp/v2/posts',
+        '/wp/v2/pages',
+        '/wp/v2/users',
+        // Aggiungi altri endpoint se necessario
+    );
 
-function send_form_submission_email_to_admins( $new_status, $old_status, $post ) {
-    // Verifica se il post è del tipo 'form_submission' e il nuovo stato è 'publish'
-    if ( $post->post_type === 'form_submission' && $new_status === 'publish' && $old_status !== 'publish' ) {
-        // Recupera i meta field del post
-        $firstname = get_post_meta( $post->ID, '_firstname', true );
-        $lastname  = get_post_meta( $post->ID, '_lastname', true );
-        $email     = get_post_meta( $post->ID, '_email', true );
-        $url       = get_post_meta( $post->ID, '_url', true );
-        $message   = get_post_meta( $post->ID, '_message', true );
+    foreach ($endpoints_to_disable as $endpoint) {
+        if (isset($endpoints[$endpoint])) {
+            unset($endpoints[$endpoint]);
+        }
+    }
 
-        // Ottieni tutti gli amministratori del sito
-        $admins = get_users( array( 'role__in' => array( 'administrator' ) ) );
+    return $endpoints;
+}
+add_filter('rest_endpoints', 'disable_default_rest_endpoints', 10, 1);
 
-        // Prepara l'array di destinatari
-        $to = array();
-        foreach ( $admins as $admin ) {
-            $to[] = $admin->user_email;
+////////FUNZIONI API
+//
+// Funzione per restituire i dati specificati
+function get_custom_post_data($post) {
+    // Recupera i metadati personalizzati
+    $mtags = get_post_meta($post->ID, '_mtags', true);
+
+    // Costruisce l'array di risposta
+    return array(
+    'id'      => $post->ID,
+    'title'   => array(
+        'rendered' => get_the_title($post->ID)
+    ),
+    'slug'    => $post->post_name,
+    'content' => array(
+        'rendered' => apply_filters('the_content', $post->post_content)
+    ),
+    'mtags'   => $mtags,
+    'images'  => ws_get_images_urls($post, 'images', null),
+    'tags'    => wp_get_post_tags($post->ID, array('fields' => 'names')), // Ottieni solo i nomi dei tag
+    'categories' => wp_get_post_categories($post->ID, array('fields' => 'names')) // Ottieni solo i nomi delle categorie
+);
+}
+
+// Funzione di callback per l'endpoint personalizzato
+function custom_post_endpoint_callback($data) {
+    // Recupera tutti i tipi di post pubblici
+    $post_types = get_post_types(array('public' => true), 'names');
+
+    $results = array();
+
+    foreach ($post_types as $post_type) {
+        // Recupera i post del tipo corrente
+        $posts = get_posts(array(
+            'post_type'      => $post_type,
+            'posts_per_page' => -1,
+			'post_status'    => 'publish'
+        ));
+
+        foreach ($posts as $post) {
+            $results[] = get_custom_post_data($post);
+        }
+    }
+
+    return $results;
+}
+
+// Registrazione dell'endpoint personalizzato
+function register_custom_post_endpoint() {
+    register_rest_route('wp/v2', '/endpoint/posts', array(
+        'methods'  => 'GET',
+        'callback' => 'custom_post_endpoint_callback',
+        'permission_callback' => '__return_true',
+    ));
+}
+add_action('rest_api_init', 'register_custom_post_endpoint');
+
+// Funzione per ottenere gli URL delle immagini
+function ws_get_images_urls($post, $field_name, $request) {
+    $post_id = $post->ID;
+
+    $images = array();
+
+    // Recupera l'ID dell'immagine in evidenza
+    $thumbnail_id = get_post_thumbnail_id($post_id);
+
+    if ($thumbnail_id) {
+        // URL dell'immagine in evidenza per dimensioni 'large' e 'medium'
+        $image_src_large = wp_get_attachment_image_src($thumbnail_id, 'large');
+        if ($image_src_large) {
+            $images['large'] = $image_src_large[0];
         }
 
-        // Prepara il soggetto e il corpo dell'email
-        $subject = 'Nuova compilazione Form dal sito';
-        
-        $body   .= '<p>Puoi visualizzare il Form Submission qui: ' . get_permalink( $post->ID ) . '</p>';
-
-        // Imposta gli headers per l'email
-        $headers = array( 'Content-Type: text/html; charset=UTF-8' );
-
-        // Invia l'email agli amministratori
-        wp_mail( $to, $subject, $body, $headers );
-    }
-}
-
-
-//////////////////// FUNZIONI API
-
-////////// Mostra lurl delle immagini nellAPI
-function ws_register_images_field() {
-    // Ottieni tutti i tipi di post personalizzati registrati
-    $post_types = get_post_types(array('public' => true), 'names');
-
-    // Loop attraverso tutti i tipi di post
-    foreach ($post_types as $post_type) {
-        // Registra il campo personalizzato 'images' per ciascun tipo di post
-        register_rest_field(
-            $post_type,
-            'images',
-            array(
-                'get_callback'    => 'ws_get_images_urls',
-                'update_callback' => null,
-                'schema'          => null,
-            )
-        );
-    }
-}
-
-add_action('rest_api_init', 'ws_register_images_field');
-
-function ws_get_images_urls($object, $field_name, $request) {
-    // Ottieni l'URL dell'immagine in dimensione 'medium'
-    $medium = wp_get_attachment_image_src(get_post_thumbnail_id($object['id']), 'medium');
-    $medium_url = $medium ? $medium[0] : '';
-
-    // Ottieni l'URL dell'immagine in dimensione 'large'
-    $large = wp_get_attachment_image_src(get_post_thumbnail_id($object['id']), 'large');
-    $large_url = $large ? $large[0] : '';
-
-    return array(
-        'medium' => $medium_url,
-        'large'  => $large_url,
-    );
-}
-
-////////// AGGIUNGE IL VALORE DEI TAGS ALL API
-add_action('rest_api_init', 'bs_rest_api_hooks');
-function bs_rest_api_hooks() {
-    register_rest_field(
-        'post',
-        'mtags',
-        array(
-            'get_callback' => 'm_get_tags',
-        )
-    );
-}
-
-function m_get_tags($array, $field_name, $request) {
-    $tags = get_the_tags($array['id']);
-    if (empty($tags) || is_wp_error($tags)) {
-        return [];
+        $image_src_medium = wp_get_attachment_image_src($thumbnail_id, 'medium');
+        if ($image_src_medium) {
+            $images['medium'] = $image_src_medium[0];
+        }
     }
 
-    $tag_array = array();
-    foreach ($tags as $tag) {
-        $tag_array[] = $tag->name;  // Puoi aggiungere altri campi come 'id', 'slug', ecc.
-    }
-
-    return $tag_array;
+    return $images;
 }
-
-////////// MOSTRA I CUSTOM FIELD WP NELLE API REST
-add_action('rest_api_init', 'add_custom_fields_to_rest_api');
-function add_custom_fields_to_rest_api() {
-    // Recupera tutti i tipi di post registrati
-    $post_types = get_post_types(array('public' => true), 'names');
-
-    // Per ciascun tipo di post, aggiungi il campo personalizzato
-    foreach ($post_types as $post_type) {
-        register_rest_field(
-            $post_type,
-            'custom_fields', // Nuovo nome del campo nella risposta JSON
-            array(
-                'get_callback'    => 'get_custom_fields', // Nome della funzione personalizzata
-                'update_callback' => null,
-                'schema'          => null,
-            )
-        );
-    }
-}
-
-function get_custom_fields($object, $field_name, $request) {
-    // Recupera i custom fields per il post corrente
-    $post_id = $object['id'];
-    $custom_fields = get_post_meta($post_id);
-
-    // Opzionalmente, puoi filtrare o elaborare i custom fields qui
-    // Ad esempio, se vuoi escludere alcuni campi specifici
-    // $excluded_fields = array('_edit_lock', '_edit_last');
-    // foreach ($excluded_fields as $excluded_field) {
-    //     if (isset($custom_fields[$excluded_field])) {
-    //         unset($custom_fields[$excluded_field]);
-    //     }
-    // }
-
-    return $custom_fields;
-}
-
-
-
-//RIMOSSE AUTORIZZAZIONI
-function handle_form_submission($request) {
-    $params = $request->get_params();
-
-    $post_id = wp_insert_post(array(
-        'post_title' => sanitize_text_field($params['title']),
-        'post_type' => 'form_submission',
-        'post_status' => 'publish',
-    ));
-
-    if (is_wp_error($post_id)) {
-        return new WP_Error('post_insert_failed', $post_id->get_error_message(), array('status' => 500));
-    }
-
-    update_post_meta($post_id, '_firstname', sanitize_text_field($params['meta']['_firstname']));
-    update_post_meta($post_id, '_lastname', sanitize_text_field($params['meta']['_lastname']));
-    update_post_meta($post_id, '_email', sanitize_email($params['meta']['_email']));
-    update_post_meta($post_id, '_url', esc_url_raw($params['meta']['_url']));
-    update_post_meta($post_id, '_message', sanitize_textarea_field($params['meta']['_message']));
-
-    return new WP_REST_Response('Form submission successful', 200);
-}
-
-add_action('rest_api_init', function() {
-    register_rest_route('wp/v2', '/form-submissions', array(
-        'methods' => 'POST',
-        'callback' => 'handle_form_submission',
-        'permission_callback' => '__return_true', // Permette l'accesso senza autenticazione
-    ));
-});
