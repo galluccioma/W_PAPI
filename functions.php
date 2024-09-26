@@ -61,6 +61,7 @@ function custom_register_form_submission_post_type() {
         'search_items'       => 'Search Form Submissions',
         'not_found'          => 'No Form Submissions found',
         'not_found_in_trash' => 'No Form Submissions found in Trash',
+		
     );
 
     $args = array(
@@ -214,8 +215,15 @@ add_action('rest_api_init', function () {
     ]);
 });
 
-// Modifica la risposta dell'API REST per includere solo le informazioni necessarie
 add_filter('rest_prepare_post', function($response, $post, $request) {
+    // Controlla il contesto della richiesta
+    $context = isset($request['context']) ? $request['context'] : 'view';
+
+    // Se il contesto è "edit" (quindi è l'editor di WordPress), restituisci la risposta completa
+    if ($context === 'edit') {
+        return $response;
+    }
+
     // Ottieni le categorie e i loro nomi
     $categories = get_the_category($post->ID);
     $category_names = [];
@@ -234,10 +242,10 @@ add_filter('rest_prepare_post', function($response, $post, $request) {
         }
     }
 
-    // Crea una nuova risposta con i dati desiderati
+    // Crea una nuova risposta con i dati desiderati per le richieste esterne
     $new_response = [
         'title'             => $response->data['title']['rendered'],
-		'slug'              => $post->post_name, // Aggiungi lo slug del post
+        'slug'              => $post->post_name, // Aggiungi lo slug del post
         'content'           => $response->data['content']['rendered'],
         'categories'        => $category_names, // Array di nomi delle categorie
         'tags'              => $tag_names, // Array di nomi dei tag
@@ -246,3 +254,4 @@ add_filter('rest_prepare_post', function($response, $post, $request) {
 
     return rest_ensure_response($new_response);
 }, 10, 3);
+
