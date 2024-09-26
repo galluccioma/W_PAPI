@@ -192,104 +192,56 @@ function custom_custom_form_submission_column($column, $post_id) {
 }
 add_action('manage_form_submission_posts_custom_column', 'custom_custom_form_submission_column', 10, 2);
 
-// // Disabilita gli endpoint API REST predefiniti
-function disable_default_rest_endpoints($endpoints) {
-    // Elenco degli endpoint da disabilitare
-    $endpoints_to_disable = array(
-        '/wp/v2/posts',
-        '/wp/v2/pages',
-        '/wp/v2/users',
-        // Aggiungi altri endpoint se necessario
-    );
 
-    foreach ($endpoints_to_disable as $endpoint) {
-        if (isset($endpoints[$endpoint])) {
-            unset($endpoints[$endpoint]);
+
+
+////FUNZIONI API
+
+// Aggiungi il supporto per l'immagine in evidenza nelle risposte API
+add_action('rest_api_init', function () {
+    // Aggiungi un campo personalizzato alla risposta della REST API
+    register_rest_field('post', 'featured_image_url', [
+        'get_callback' => function($post_arr) {
+            // Ottieni l'ID del post
+            $post_id = $post_arr['id'];
+            // Ottieni l'URL dell'immagine in evidenza
+            $image_id = get_post_thumbnail_id($post_id);
+            if ($image_id) {
+                return wp_get_attachment_url($image_id);
+            }
+            return null;
+        },
+    ]);
+});
+
+// Modifica la risposta dell'API REST per includere solo le informazioni necessarie
+add_filter('rest_prepare_post', function($response, $post, $request) {
+    // Ottieni le categorie e i loro nomi
+    $categories = get_the_category($post->ID);
+    $category_names = [];
+    
+    foreach ($categories as $category) {
+        $category_names[] = $category->name;
+    }
+
+    // Ottieni i tag e i loro nomi
+    $tags = get_the_tags($post->ID);
+    $tag_names = [];
+    
+    if ($tags) {
+        foreach ($tags as $tag) {
+            $tag_names[] = $tag->name;
         }
     }
 
-    return $endpoints;
-}
-add_filter('rest_endpoints', 'disable_default_rest_endpoints', 10, 1);
+    // Crea una nuova risposta con i dati desiderati
+    $new_response = [
+        'title'             => $response->data['title'],
+        'content'           => $response->data['content']['rendered'],
+        'categories'        => $category_names, // Array di nomi delle categorie
+        'tags'              => $tag_names, // Array di nomi dei tag
+        'featured_image_url' => $response->data['featured_image_url'],
+    ];
 
-////////FUNZIONI API
-//
-// Funzione per restituire i dati specificati
-function get_custom_post_data($post) {
-    // Recupera i metadati personalizzati
-    $mtags = get_post_meta($post->ID, '_mtags', true);
-
-    // Costruisce l'array di risposta
-    return array(
-    'id'      => $post->ID,
-    'title'   => array(
-        'rendered' => get_the_title($post->ID)
-    ),
-    'slug'    => $post->post_name,
-    'content' => array(
-        'rendered' => apply_filters('the_content', $post->post_content)
-    ),
-    'mtags'   => $mtags,
-    'images'  => ws_get_images_urls($post, 'images', null),
-    'tags'    => wp_get_post_tags($post->ID, array('fields' => 'names')), // Ottieni solo i nomi dei tag
-    'categories' => wp_get_post_categories($post->ID, array('fields' => 'names')) // Ottieni solo i nomi delle categorie
-);
-}
-
-// Funzione di callback per l'endpoint personalizzato
-function custom_post_endpoint_callback($data) {
-    // Recupera tutti i tipi di post pubblici
-    $post_types = get_post_types(array('public' => true), 'names');
-
-    $results = array();
-
-    foreach ($post_types as $post_type) {
-        // Recupera i post del tipo corrente
-        $posts = get_posts(array(
-            'post_type'      => $post_type,
-            'posts_per_page' => -1,
-			'post_status'    => 'publish'
-        ));
-
-        foreach ($posts as $post) {
-            $results[] = get_custom_post_data($post);
-        }
-    }
-
-    return $results;
-}
-
-// Registrazione dell'endpoint personalizzato
-function register_custom_post_endpoint() {
-    register_rest_route('wp/v2', '/endpoint/posts', array(
-        'methods'  => 'GET',
-        'callback' => 'custom_post_endpoint_callback',
-        'permission_callback' => '__return_true',
-    ));
-}
-add_action('rest_api_init', 'register_custom_post_endpoint');
-
-// Funzione per ottenere gli URL delle immagini
-function ws_get_images_urls($post, $field_name, $request) {
-    $post_id = $post->ID;
-
-    $images = array();
-
-    // Recupera l'ID dell'immagine in evidenza
-    $thumbnail_id = get_post_thumbnail_id($post_id);
-
-    if ($thumbnail_id) {
-        // URL dell'immagine in evidenza per dimensioni 'large' e 'medium'
-        $image_src_large = wp_get_attachment_image_src($thumbnail_id, 'large');
-        if ($image_src_large) {
-            $images['large'] = $image_src_large[0];
-        }
-
-        $image_src_medium = wp_get_attachment_image_src($thumbnail_id, 'medium');
-        if ($image_src_medium) {
-            $images['medium'] = $image_src_medium[0];
-        }
-    }
-
-    return $images;
-}
+    return rest_ensure_response($new_response);
+}, 10, 3);
