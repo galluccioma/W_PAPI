@@ -236,7 +236,8 @@ add_filter('rest_prepare_post', function($response, $post, $request) {
 
     // Crea una nuova risposta con i dati desiderati
     $new_response = [
-        'title'             => $response->data['title'],
+        'title'             => $response->data['title']['rendered'],
+		'slug'              => $post->post_name, // Aggiungi lo slug del post
         'content'           => $response->data['content']['rendered'],
         'categories'        => $category_names, // Array di nomi delle categorie
         'tags'              => $tag_names, // Array di nomi dei tag
