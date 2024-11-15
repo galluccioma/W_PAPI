@@ -1,2 +1,2 @@
 <?php
-// Minimal Headless Theme
+//W PAPI
